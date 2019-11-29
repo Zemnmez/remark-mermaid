@@ -1,43 +1,35 @@
 const fs = require('fs-extra');
+const puppeteer = require('puppeteer');
 const visit = require('unist-util-visit');
 const utils = require('./utils');
-
-const render = utils.render;
-const renderFromFile = utils.renderFromFile;
-const getDestinationDir = utils.getDestinationDir;
-const createMermaidDiv = utils.createMermaidDiv;
 
 const PLUGIN_NAME = 'remark-mermaid';
 
 /**
- * Is this title `mermaid:`?
- *
- * @param  {string} title
- * @return {boolean}
- */
-const isMermaid = title => title === 'mermaid:';
-
-/**
  * Given a node which contains a `url` property (eg. Link or Image), follow
  * the link, generate a graph and then replace the link with the link to the
- * generated graph. Checks to ensure node has a title of `mermaid:` before doing.
+ * generated graph. Ensures node has a title of `mermaid:` beforehand.
  *
  * @param   {object}  node
  * @param   {vFile}   vFile
+ * @param {puppeteer.Browser} browser
+ * @param {string} rendererDir see utils/rendererDir()
  * @return {object}
  */
-function replaceUrlWithGraph(node, vFile) {
+async function replaceUrlWithGraph({ node, vFile, browser, rendererDir }) {
   const { title, url, position } = node;
   const { destinationDir } = vFile.data;
 
-  // If the node isn't mermaid, ignore it.
-  if (!isMermaid(title)) {
-    return node;
-  }
+  if (title !== "mermaid:") return node;
 
   try {
     // eslint-disable-next-line no-param-reassign
-    node.url = renderFromFile(`${vFile.dirname}/${url}`, destinationDir);
+    node.url = utils.renderFromFile({
+      file:`${vFile.dirname}/${url}`,
+      destinationDir,
+      browser,
+      rendererDir
+    });
 
     vFile.info('mermaid link replaced with link to graph', position, PLUGIN_NAME);
   } catch (error) {
@@ -61,15 +53,12 @@ function replaceLinkWithEmbedded(node, index, parent, vFile) {
   const { title, url, position } = node;
   let newNode;
 
-  // If the node isn't mermaid, ignore it.
-  if (!isMermaid(title)) {
-    return node;
-  }
+  if (title !== "mermaid:") return node;
 
   try {
     const value = fs.readFileSync(`${vFile.dirname}/${url}`, { encoding: 'utf-8' });
 
-    newNode = createMermaidDiv(value);
+    newNode = utils.createMermaidDiv(value);
     parent.children.splice(index, 1, newNode);
     vFile.info('mermaid link replaced with div', position, PLUGIN_NAME);
   } catch (error) {
@@ -88,19 +77,19 @@ function replaceLinkWithEmbedded(node, index, parent, vFile) {
  * @param {object}  ast
  * @param {vFile}   vFile
  * @param {boolean} isSimple
+ * @param {puppeteer.Browser} browser
+ * @param {string} rendererDir see utils/rendererDir()
  * @return {function}
  */
-function visitCodeBlock(ast, vFile, isSimple) {
+async function visitCodeBlock({ ast, browser, rendererDir, vFile, isSimple }) {
   return visit(ast, 'code', (node, index, parent) => {
     const { lang, value, position } = node;
-    const destinationDir = getDestinationDir(vFile);
+    const destinationDir = utils.getDestinationDir(vFile);
     let newNode;
 
     // If this codeblock is not mermaid, bail.
-    if (lang !== 'mermaid') {
-      return node;
-    }
-
+    if (lang !== 'mermaid') return node;
+    
     // Are we just transforming to a <div>, or replacing with an image?
     if (isSimple) {
       newNode = createMermaidDiv(value);
@@ -111,7 +100,12 @@ function visitCodeBlock(ast, vFile, isSimple) {
     } else {
       let graphSvgFilename;
       try {
-        graphSvgFilename = render(value, destinationDir);
+        graphSvgFilename = await utils.renderToFile({
+          rendererDir,
+          browser,
+          source: value,
+          destinationDir
+        });
 
         vFile.info(`${lang} code block replaced with graph`, position, PLUGIN_NAME);
       } catch (error) {
@@ -140,33 +134,43 @@ function visitCodeBlock(ast, vFile, isSimple) {
  * @param {object}  ast
  * @param {vFile}   vFile
  * @param {boolean} isSimple
- * @return {function}
  */
-function visitLink(ast, vFile, isSimple) {
+async function visitAll({ nodeType, ast, vFile, isSimple, browser, rendererDir }) {
   if (isSimple) {
-    return visit(ast, 'link', (node, index, parent) => replaceLinkWithEmbedded(node, index, parent, vFile));
+    return visit(ast, nodeType, async (node, index, parent) => replaceLinkWithEmbedded(node, index, parent, vFile));
   }
 
-  return visit(ast, 'link', node => replaceUrlWithGraph(node, vFile));
+  const replaceUrlWithGraphs = collectPromises(replaceUrlWithGraph);
+
+  visit(
+    ast,
+    nodeType,
+    node => replaceUrlWithGraphs({
+      node, vFile, browser, rendererDir
+    })
+  );
+
+  await Promise.all(replaceUrlWithGraphs.promises);
 }
 
 /**
- * If images have a title attribute called `mermaid:`, follow the link and
- * depending on `isSimple`, either generate and link to the graph, or simply
- * wrap the graph contents in a div.
- *
- * @param {object}  ast
- * @param {vFile}   vFile
- * @param {boolean} isSimple
- * @return {function}
+ * collectPromises adapts synchronous code that calls
+ * our functions e.g. visit() by returning a new function
+ * which executes the same, but synchronously collects
+ * the `Promise`s into an array that we can `await` on in
+ * our asynchronous caller function.
+ * @param {(...params: Array<any>) => Promise<any>} fn
+ * @returns {Array<Promise<any>>}
  */
-function visitImage(ast, vFile, isSimple) {
-  if (isSimple) {
-    return visit(ast, 'image', (node, index, parent) => replaceLinkWithEmbedded(node, index, parent, vFile));
-  }
+function collectPromises(fn) {
+  const promises = [];
 
-  return visit(ast, 'image', node => replaceUrlWithGraph(node, vFile));
+  return Object.assign((...args) => {
+    promises.push(fn(...args));
+  }, { promises });
 }
+
+
 
 /**
  * Returns the transformer which acts on the MDAST tree and given VFile.
@@ -181,8 +185,11 @@ function visitImage(ast, vFile, isSimple) {
  * @param {object} options
  * @return {function}
  */
-function mermaid(options = {}) {
-  const simpleMode = options.simple || false;
+async function mermaid(options = {}) {
+  const isSimple = options.simple || false;
+  const browser = options.browser || await puppeteer.launch();
+  const rendererDir = await util.rendererDir();
+
 
   /**
    * @param {object} ast MDAST
@@ -190,10 +197,12 @@ function mermaid(options = {}) {
    * @param {function} next
    * @return {object}
    */
-  return function transformer(ast, vFile, next) {
-    visitCodeBlock(ast, vFile, simpleMode);
-    visitLink(ast, vFile, simpleMode);
-    visitImage(ast, vFile, simpleMode);
+  return async function transformer(ast, vFile, next) {
+    await Promise.all([
+      visitCodeBlock({ rendererDir, browser, ast, vFile, isSimple}),
+      visitAll({ nodeType: 'image', rendererDir, browser, ast, vFile, isSimple }),
+      visitAll({ nodeType: 'link', rendererDir, browser, ast, vFile, isSimple }),
+    ]);
 
     if (typeof next === 'function') {
       return next(null, ast, vFile);
