@@ -2,11 +2,8 @@ import * as puppeteer from 'puppeteer';
 import { Config as renderMermaidConfig, renderMermaid }
     from 'mermaid-render';
 
-export type Options =  & {
+export type Options = {
 } & renderMermaidConfig
-
-/** to prevent us from using the global Node by accident */
-type Node = never;
 
 type Eventually<T> = T | Promise<T>
 
@@ -16,12 +13,14 @@ type Eventually<T> = T | Promise<T>
  */
 namespace mdast {
     export type nextFunc = (err?: Error, tree?: Node, file?: unist.vFile) => unknown;
-    export type Attacher<T = unknown> = ((options: T) => Transformer);
+    export type Attacher = unist.Attacher & ((options: unknown) => Transformer);
+    export type Transformer = unist.Transformer & (
+        ((node: Node, file: unist.vFile, next?: nextFunc) =>
+            void | Eventually<Error | Node>) |
 
-    export type Transformer = 
         ((node: Node, file?: unist.vFile) =>
             void | Eventually<Error | Node>) 
-  ;
+    ) ;
 
     /**
      * MIXINS
@@ -49,34 +48,32 @@ namespace mdast {
         alt?: string
     } 
 
-    export type Reference<T extends unist.Node> = Association<T> & {
-        referenceType: referenceType
-    }
-
     /**
      * NODES
      */
-    export type Node = Parent | Literal |
+    export type Node = 
+        Reference<any> | Parent | Literal |
         Root | Paragraph | Heading | ThematicBreak |
         Blockquote | List | ListItem | Table | TableRow |
         TableCell | HTML | Code | YAML | FootnoteDefinition |
         Text | Emphasis | Strong | Delete | InlineCode | Break |
         Link | Image | LinkReference | ImageReference |
-        Footnote | FootnoteReference | Definition;
+        Footnote | FootnoteReference;
 
     /** a marker associated to another node */
-
+    export interface Reference<T extends unist.Node> extends Association<T> {
+        referenceType: referenceType
+    }
     /** a Node containing other Nodes */
-    export type Parent = unist.Parent & unist.Node & {
+    export interface Parent extends unist.Parent, unist.Node {
         children: Array<Content>
     }
-
     /** a Node containing a value. never a child. */
-    export type Literal = unist.Literal & unist.Node & {}
+    export interface Literal extends unist.Literal, unist.Node {}
     /** a document. never a child. */
-    export type Root = Parent & unist.Node & { type: "root" }
+    export interface Root extends Parent, unist.Node { type: "root" }
     /** a unit of discourse (??) (it's just text...) */
-    export type Paragraph = Parent & unist.Node & {
+    export interface Paragraph extends Parent, unist.Node {
         type: "paragraph",
         children: Array<PhrasingContent>
     }
@@ -89,13 +86,13 @@ namespace mdast {
      * -----------
      * `
      */
-    export type Heading = Parent & unist.Node & {
+    export interface Heading extends Parent, unist.Node {
         type: "heading",
         depth: number, // between 1 and 6
         children: Array<PhrasingContent>
     }
     /** @example markdown`***` */
-    export type ThematicBreak = unist.Node & {
+    export interface ThematicBreak extends unist.Node {
         type: "thematicBreak"
     }
     /** a quoted section
@@ -103,7 +100,7 @@ namespace mdast {
      * > Call me Ishmael
      * `
     */
-    export type Blockquote = Parent & unist.Node & {
+    export interface Blockquote extends Parent, unist.Node {
         type: "blockquote",
         children: Array<BlockContent>
     }
@@ -114,7 +111,7 @@ namespace mdast {
      * * beans
      * `
     */
-    export type List = Parent & unist.Node & {
+    export interface List extends Parent, unist.Node {
         type: "list",
         ordered?: boolean,
         start?: number,
@@ -124,32 +121,32 @@ namespace mdast {
     /** an item in a List
      * @example markdown` * eggs `
     */
-    export type ListItem = Parent & unist.Node & {
+    export interface ListItem extends Parent, unist.Node {
         type: "listItem",
         checked?: boolean,
         spread?: boolean,
         children: Array<BlockContent>
     }
     /** a table 🏓 */
-    export type Table = Parent & unist.Node  & {
+    export interface Table extends Parent, unist.Node {
         type: "table",
         align?: Array<AlignType>,
         children: Array<TableContent>
     }
     /** a row in a Table 🚣‍♀️ */
-    export type TableRow = Parent & unist.Node  & {
+    export interface TableRow extends Parent, unist.Node {
         type: "tableRow",
         children: Array<RowContent>
     }
     /** header cell in a Table */
-    export type TableCell = Parent & unist.Node  & {
+    export interface TableCell extends Parent, unist.Node {
         type: "tableCell",
         children: Array<PhrasingContent>
     }
     /** a fragment of raw HTML
      * @example markdown`<br/>`
     */
-    export type HTML = Literal & unist.Node  & {
+    export interface HTML extends Literal, unist.Node {
         type: "html",
     }
     /** A block of preformatted text
@@ -163,7 +160,7 @@ namespace mdast {
      * `
      * 
     */
-    type Code = Literal & unist.Node & {
+    export interface Code extends Literal, unist.Node {
         type: "code",
         /** (computer) language of the code */
         lang?: string,
@@ -176,7 +173,7 @@ namespace mdast {
      * foo: bar
      * ---
     */
-    export type YAML = Literal & unist.Node  & {
+    export interface YAML extends Literal, unist.Node {
         type: "yaml"
     }
     /** depresents a resource reference
@@ -206,14 +203,14 @@ namespace mdast {
 
     }
     /** just text */
-    export type Text = Literal & unist.Node  & {
+    export interface Text extends Literal, unist.Node {
         type: "text"
     }
     /** visually stressed content
      * @example markdown`*alpha*`
      * @example markdown`_bravo_`
     */
-    export type Emphasis = Parent & unist.Node  & {
+    export interface Emphasis extends Parent, unist.Node {
         type: "emphasis",
         children: Array<PhrasingContent>
     }
@@ -221,7 +218,7 @@ namespace mdast {
      * @example markdown`**alpha**`
      * @example markdown`__bravo__`
      */
-    export type Strong = Parent & unist.Node  & {
+    export interface Strong extends Parent, unist.Node {
         type: "strong",
         children: Array<PhrasingContent>
     }
@@ -229,14 +226,14 @@ namespace mdast {
      * accurate or relevant
      * @example markdown`~~alpha~~
      */
-    export type Delete = Parent & unist.Node  & {
+    export interface Delete extends Parent, unist.Node {
         type: "delete",
         children: Array<PhrasingContent>
     }
     /** a fragment of computer code
      * @example markdown`${"`ok()`"}`
     */
-    export type InlineCode = Literal & unist.Node  & {
+    export interface InlineCode extends Literal, unist.Node {
         type: "inlineCode"
     }
     /** a line break, as in poems or addresses
@@ -244,13 +241,13 @@ namespace mdast {
      * foo··
      * bar`
     */
-    export type Break = unist.Node  & {
+    export interface Break extends unist.Node {
         type: "break"
     }
     /** a hyperlink
      * @example markdown`[Alpha](https://example.com bravo)`
      */
-    export type Link = Parent & unist.Node & Resource  & {
+    export interface Link extends Parent, unist.Node, Resource {
         type: "link",
         children: Array<StaticPhrasingContent>
     }
@@ -258,15 +255,15 @@ namespace mdast {
      * @example markdown`
      * ![alpha](https://example.com/favicon.ico "bravo")`
     */
-   export type Image =
-    unist.Node & Resource & Alternative & {
+   export interface Image extends
+    unist.Node, Resource, Alternative {
        type: "image"
    }
    /** a hyperlink by association
     * @example markdown`[Alpha][Alpha]`
     */
-   export type LinkReference =
-        Parent & Reference<Definition> &  {
+   export interface LinkReference extends
+        Parent, Reference<Definition> {
         
         type: "linkReference",
         children: Array<StaticPhrasingContent>
@@ -274,8 +271,8 @@ namespace mdast {
     /** an image by association
      * @example markdown`![alpha][myReference]`
      */
-    export type ImageReference =
-        unist.Node & Reference<Definition> & Alternative & {
+    export interface ImageReference extends
+        unist.Node, Reference<Definition>, Alternative {
 
         type: "imageReference"
     }
@@ -284,15 +281,15 @@ namespace mdast {
      * its flow
      * @example markdown`[^alpha bravo]`
      */
-    export type Footnote = Parent  & {
+    export interface Footnote extends Parent {
         type: "footnote",
         children: Array<PhrasingContent>
     }
     /** a marker through association
      * @example markdown`[^alpha]`
     */
-    export type FootnoteReference =
-        unist.Node & Association<FootnoteDefinition> & {
+    export interface FootnoteReference extends
+        unist.Node, Association<FootnoteDefinition> {
         type: "footnoteReference"
     }
 
@@ -329,39 +326,39 @@ namespace mdast {
      * CONTENT
      */
 
-    export type Content =
+    type Content =
         TopLevelContent | ListContent | TableContent | RowContent | PhrasingContent
 
     /** sections of a document and metadata */
-    export type TopLevelContent =
+    type TopLevelContent =
         BlockContent | FrontmatterContent | DefinitionContent
     
     /** sections of a document */
-    export type BlockContent =
+    type BlockContent =
         Paragraph | Heading | ThematicBreak | Blockquote | List | Table | HTML | Code
 
     /** out of band info */
-    export type FrontmatterContent =
+    type FrontmatterContent =
         YAML
 
     /** out of band information; typically affecting `Association` */
-    export type DefinitionContent = Definition | FootnoteDefinition
+    type DefinitionContent = Definition | FootnoteDefinition
 
     /** items in a list */
-    export type ListContent = ListItem
+    type ListContent = ListItem
 
     /** rows in a table */
-    export type RowContent = TableCell
+    type RowContent = TableCell
 
     /** stuff in a table */
-    export type TableContent = TableRow
+    type TableContent = TableRow
 
     /** text in a document and its markup */
-    export type PhrasingContent = StaticPhrasingContent | Link | LinkReference
+    type PhrasingContent = StaticPhrasingContent | Link | LinkReference
 
     /** the text in a document and its markup not intended for user
      * interaction */
-    export type StaticPhrasingContent = 
+    type StaticPhrasingContent = 
         Text | Emphasis | Strong | Delete |
         HTML | InlineCode | Break | Image |
         ImageReference | Footnote | FootnoteReference;
@@ -370,12 +367,12 @@ namespace mdast {
 
 namespace unist {
     /** node that contains a value */
-    export type Literal<T = unknown> = Node  & {
-        value: T
+    export interface Literal extends Node {
+        value: any
     }
 
     /** Nodes containing other Nodes */
-    export type Parent = Node  & {
+    export interface Parent extends Node {
         Children: Node[]
     }
 
@@ -385,6 +382,9 @@ namespace unist {
         column?: number,
         offset: number
     }
+
+    /** literally fucking anything */
+    export interface Data {};
 
     /** a position in a remark ast */
     export interface Position {
@@ -398,7 +398,7 @@ namespace unist {
         /** what type the node implements */
         type: string,
         /** arbitrary data */
-        data?: unknown,
+        data?: Data,
         /** location of the node */
         position?: Position
     }
@@ -425,7 +425,7 @@ namespace unist {
         /** list of file-paths the file has been moved between */
         history?: string[],
         /** for storage of custom information */
-        data?: unknown,
+        data?: any,
 
         /**
          * Convert the contents to string.
@@ -460,7 +460,7 @@ namespace unist {
     /**
      * @see https://github.com/vfile/vfile-message/tree/3596c73a06c5db6af031d0aab06a3fb29c7b1044#api
      */
-    export type VMessage =  & {
+    export type VMessage = {
         new(
             /**
              * reason for the message
@@ -513,7 +513,7 @@ namespace unist {
     /**
      * a confirgurable remark plugin.
      */
-    export type Attacher<T = unknown> = (options?: T) => Transformer;
+    export type Attacher = (options: unknown) => Transformer;
 
     type TransformerReturnType = void | Eventually<Error | Node>
 
@@ -533,28 +533,20 @@ namespace unist {
      */
     export type Transformer =
         ((node: Node, file: vFile, next?: nextFunc) =>
-            void | Error | Node) |
+            void | Eventually<Error | Node>) |
         ((node: Node, file?: vFile) =>
             void | Eventually<Error | Node>);
 }
-export const mermaid: mdast.Attacher<Options> =
-    (options: Options = {}) => {
-        if (!options.browser) options.browser =
-            puppeteer.launch({
-                // allow wsl
-                args: ["--no-sandbox"]
-            });
+export const mermaid = <mdast.Attacher & ((options?:Options) => any)>
+((options: Options = {}) => {
+    if (!options.browser) options.browser =
+        puppeteer.launch({
+            // allow wsl
+            args: ["--no-sandbox"]
+        });
 
-        const transform = async (ast: mdast.Node, file: unist.vFile) => {
-            // walk
-            if ("children" in ast)
-                await Promise.all((<Array<mdast.Content>> ast.children).map(
-                    child => transform(child, file)
-                ));
-
-
-            return new Error("unimplemented")
-        }
-
-        return transform;
-    }
+    return <mdast.Transformer> (async (ast: mdast.Node, file: unist.vFile, next?: Function) => {
+        
+        return {}
+    })
+})
