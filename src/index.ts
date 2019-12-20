@@ -548,41 +548,168 @@ export const mermaid:
             args: ["--no-sandbox"]
         });
 
+    return (ast: mdast.Node, file: unist.vFile) =>
+        transformer({ast, file, ...options});
+}
+
+type TransformerOptions = {
+    file: unist.vFile,
+} & Options;
+
+type transformerRet = Promise<
+    [mdast.Node, undefined] |
+    [undefined, Error[]]
+>
+
+export interface TargetNode extends mdast.Code {
+    lang: "mermaid",
+    meta: string
+}
+
+
+
+export type Metadata = {
+    /** the file to render to */
+    file: string,
+    /** the name of the defined identifier
+     * e.g. name = "ok"
+     * produces [ok]: ./my/file.svg
+     */
+    name: string,
+    /** the optional title alt text
+     * for the rendered image resource
+     */
+    alt?: string
+}
+
+
+interface ParsedMermaidBlock<
+    file extends Metadata["file"] = Metadata["file"],
+    name extends Metadata["name"] = Metadata["name"],
+    alt extends Metadata["alt"] = Metadata["alt"]
+> extends TargetNode {
+    parsedMeta: {
+        file: file,
+        name: name,
+        alt: alt
+    }
+}
+
+interface M<
+    label extends string = string,
+    referenceType extends mdast.referenceType = mdast.referenceType,
+    alt extends string | undefined = string | undefined
+> extends mdast.ImageReference{
+    label: label,
+    referenceType: referenceType,
+    alt: alt
+}
+
+interface D<
+    label extends string = string,
+    url extends string = string,
+    title extends string | undefined = string
+> extends mdast.Definition {
+    label: label,
+    url: url,
+    title: title
+}
+
+async function transformMermaidBlock<
+    mermaidNode extends TargetNode
+>(nd: mermaidNode, {...others}: TransformerOptions) {
+    const meta = nd.meta.split(" ").map(v => v.split("=") as [string,string]);
+    const parsedMeta = meta.reduce(
+        (c, [k,v]) => ({[k]: v, ...c})
+    ,{} as Partial<Metadata> );
+
+    const { file: imageFilePath, name, alt } = parsedMeta;
+    if (!imageFilePath) return nd;
+    if (!name) return nd;
+
+    return transformParsedMermaidBlock({
+        parsedMeta: {
+            file: imageFilePath,
+            name,
+            alt,
+        },
+        ...nd
+    }, others)
 
 }
-const transformer =
-    async <o extends mdast.Node>(ast: mdast.Node, file: unist.vFile): Promise<mdast.Node> => {
+ 
 
-        type ChildT = mdast.Content |
-            mdast.PhrasingContent |
-            mdast.BlockContent |
-            mdast.ListItem |
-            mdast.TableRow |
-            mdast.TableCell |
-            mdast.StaticPhrasingContent;
+/** let me have my fun */
+async function transformParsedMermaidBlock<
+    file extends string,
+    name extends string,
+    alt extends string | undefined,
+    mermaidNode extends ParsedMermaidBlock<file, name, alt>
+    >(
+    mermaidNode: mermaidNode, {...others}: TransformerOptions): Promise<[
+        /** image embed */
+        M<name, mdast.referenceType.full, alt>,
+        /** image definition */
+        D<name,file, alt>
+    ]> {
 
-        type extractArrayType <T extends Array<any>> =
-            T extends Array<infer Q>? Q:never;
-        if ("children" in ast) {
-            // i would do this with a map
-            // but the type gets too complex
-            // for typescript
-            const childCopy: 
-                Array<Eventually<mdast.Content | Error>> |
-                Array<Eventually<mdast.BlockContent | Error>> |
-                Array<Eventually<mdast.ListItem | Error>> |
-                Array<Eventually<mdast.TableCell | Error>> |
-                Array<Eventually<mdast.StaticPhrasingContent | Error>>
-                = [...ast.children];
+        const { file, name, alt } = mermaidNode.parsedMeta;
+        const identifier = name.toLowerCase();
 
-            for (let i = 0; i < childCopy.length; i++) {
-                const current = childCopy[i];
-                childCopy[i] = transformer<typeof current>(ast, file) ;
+        return [
+            {
+                type: "imageReference",
+                identifier,
+                label: name,
+                referenceType: mdast.referenceType.full,
+                alt: alt
+            },
+            {
+                type: "definition",
+                label: name,
+                url: file,
+                title: alt,
+                identifier
             }
+        ];
+        
+
+        
+}
+
+/** our transformer ignores most nodes... */
+export async function _transformer<T extends mdast.Node = mdast.Node>
+    (ast: T, {...others}: TransformerOptions): Promise<T>
+
+/** but transforms mermaid blocks! */
+export async function _transformer<T extends TargetNode>
+    (ast: T, {...others}: TransformerOptions): Promise<[mdast.ImageReference,
+         mdast.Reference<mdast.ImageReference>]>
+
+export async function _transformer
+    (ast: mdast.Node, opts: TransformerOptions): Promise<mdast.Node|
+        [mdast.ImageReference, mdast.Definition]> {
+        const { file, browser } = opts;
+
+        if ("children" in ast) {
+            let toComplete: Array<Promise<void>> = [];
+            // would love to do this with a map, but the types
+            // hit some internal typescript limit...
+            for (let i = 0; i < ast.children.length; i++) {
+                const child = ast.children[i];
+                const res = _transformer(child, {...opts});
+                toComplete.push(
+                    (async () => {
+                        ast.children[i] = await res;
+                    })()
+                );
+            }
+
+            await Promise.all(toComplete);
         }
  
         
     
         
-        return <o>ast;
+        return [ast, void 0];
     }
