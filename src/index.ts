@@ -15,9 +15,6 @@ namespace mdast {
     export type nextFunc = (err?: Error, tree?: Node, file?: unist.vFile) => unknown;
     export type Attacher = unist.Attacher & ((options: unknown) => Transformer);
     export type Transformer = unist.Transformer & (
-        ((node: Node, file: unist.vFile, next?: nextFunc) =>
-            void | Eventually<Error | Node>) |
-
         ((node: Node, file?: unist.vFile) =>
             void | Eventually<Error | Node>) 
     ) ;
@@ -42,6 +39,14 @@ namespace mdast {
         /** title of the referenced resource */
         title?: string
     }
+
+    /** a Node containing other Nodes
+     * mdast dosnt call this a mixin but since
+     * it doesnt have a constant type i think they're wrong
+    */
+    export interface Parent extends unist.Parent, unist.Node {
+        children: Array<Content>
+    }
     /** a mixin. resource with an alt tag (used when resource
      * does not load, or for screen readers) */
     export interface Alternative {
@@ -49,27 +54,28 @@ namespace mdast {
     } 
 
     /**
+     * Interfaces
+     */
+    /** a Node containing a value. never a child. */
+    export interface Literal extends unist.Literal, unist.Node {}
+
+    /**
      * NODES
      */
+
     export type Node = 
-        Reference<any> | Parent | Literal |
         Root | Paragraph | Heading | ThematicBreak |
         Blockquote | List | ListItem | Table | TableRow |
         TableCell | HTML | Code | YAML | FootnoteDefinition |
         Text | Emphasis | Strong | Delete | InlineCode | Break |
         Link | Image | LinkReference | ImageReference |
-        Footnote | FootnoteReference;
-
+        Footnote | FootnoteReference | Definition;
+    
     /** a marker associated to another node */
     export interface Reference<T extends unist.Node> extends Association<T> {
         referenceType: referenceType
     }
-    /** a Node containing other Nodes */
-    export interface Parent extends unist.Parent, unist.Node {
-        children: Array<Content>
-    }
-    /** a Node containing a value. never a child. */
-    export interface Literal extends unist.Literal, unist.Node {}
+
     /** a document. never a child. */
     export interface Root extends Parent, unist.Node { type: "root" }
     /** a unit of discourse (??) (it's just text...) */
@@ -326,39 +332,39 @@ namespace mdast {
      * CONTENT
      */
 
-    type Content =
+    export type Content =
         TopLevelContent | ListContent | TableContent | RowContent | PhrasingContent
 
     /** sections of a document and metadata */
-    type TopLevelContent =
+    export type TopLevelContent =
         BlockContent | FrontmatterContent | DefinitionContent
     
     /** sections of a document */
-    type BlockContent =
+    export type BlockContent =
         Paragraph | Heading | ThematicBreak | Blockquote | List | Table | HTML | Code
 
     /** out of band info */
-    type FrontmatterContent =
+    export type FrontmatterContent =
         YAML
 
     /** out of band information; typically affecting `Association` */
-    type DefinitionContent = Definition | FootnoteDefinition
+    export type DefinitionContent = Definition | FootnoteDefinition
 
     /** items in a list */
-    type ListContent = ListItem
+    export type ListContent = ListItem
 
     /** rows in a table */
-    type RowContent = TableCell
+    export type RowContent = TableCell
 
     /** stuff in a table */
-    type TableContent = TableRow
+    export type TableContent = TableRow
 
     /** text in a document and its markup */
-    type PhrasingContent = StaticPhrasingContent | Link | LinkReference
+    export type PhrasingContent = StaticPhrasingContent | Link | LinkReference
 
     /** the text in a document and its markup not intended for user
      * interaction */
-    type StaticPhrasingContent = 
+    export type StaticPhrasingContent = 
         Text | Emphasis | Strong | Delete |
         HTML | InlineCode | Break | Image |
         ImageReference | Footnote | FootnoteReference;
@@ -518,8 +524,6 @@ namespace unist {
     type TransformerReturnType = void | Eventually<Error | Node>
 
 
-    export type nextFunc = (err?: Error, tree?: Node, file?: vFile) => unknown;
-
     /**
      * A function for transforming the AST of a file.
      * @param node a syntax ast to handle
@@ -532,21 +536,53 @@ namespace unist {
      * if an Error is returned, it is considered a fatal error.
      */
     export type Transformer =
-        ((node: Node, file: vFile, next?: nextFunc) =>
-            void | Eventually<Error | Node>) |
         ((node: Node, file?: vFile) =>
             void | Eventually<Error | Node>);
 }
-export const mermaid = <mdast.Attacher & ((options?:Options) => any)>
-((options: Options = {}) => {
+export const mermaid:
+    mdast.Attacher & ((options?:Options) => any) =
+(options: Options = {}) => {
     if (!options.browser) options.browser =
         puppeteer.launch({
             // allow wsl
             args: ["--no-sandbox"]
         });
 
-    return <mdast.Transformer> (async (ast: mdast.Node, file: unist.vFile, next?: Function) => {
+
+}
+const transformer =
+    async <o extends mdast.Node>(ast: mdast.Node, file: unist.vFile): Promise<mdast.Node> => {
+
+        type ChildT = mdast.Content |
+            mdast.PhrasingContent |
+            mdast.BlockContent |
+            mdast.ListItem |
+            mdast.TableRow |
+            mdast.TableCell |
+            mdast.StaticPhrasingContent;
+
+        type extractArrayType <T extends Array<any>> =
+            T extends Array<infer Q>? Q:never;
+        if ("children" in ast) {
+            // i would do this with a map
+            // but the type gets too complex
+            // for typescript
+            const childCopy: 
+                Array<Eventually<mdast.Content | Error>> |
+                Array<Eventually<mdast.BlockContent | Error>> |
+                Array<Eventually<mdast.ListItem | Error>> |
+                Array<Eventually<mdast.TableCell | Error>> |
+                Array<Eventually<mdast.StaticPhrasingContent | Error>>
+                = [...ast.children];
+
+            for (let i = 0; i < childCopy.length; i++) {
+                const current = childCopy[i];
+                childCopy[i] = transformer<typeof current>(ast, file) ;
+            }
+        }
+ 
         
-        return {}
-    })
-})
+    
+        
+        return <o>ast;
+    }
