@@ -560,12 +560,10 @@ const has =
         })
  
 
-    /*
 const contains =
     <T1, T2 extends keyof T1>(v1: T1, ...v2: Array<T2>): v1 is T1 & {
         [k in T2]-?: Exclude<T1[k], undefined>
     } => v2.every(k => k in v1);
-*/
 
 export const mermaid:
     mdast.Attacher<Options> =
@@ -661,9 +659,9 @@ async function transformMermaidBlock<
         (c, [k,v]) => ({[k]: v, ...c})
     ,{} as Partial<Metadata> );
 
+    if (!contains(parsedMeta, 'file', 'name')) return false;
+
     const { file: imageFilePath, name, alt } = parsedMeta;
-    if (!imageFilePath) return false;
-    if (!name) return false;
     const parsedMermaidBlock = {
         parsedMeta: {
             file: imageFilePath,

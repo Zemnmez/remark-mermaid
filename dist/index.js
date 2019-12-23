@@ -22,12 +22,7 @@ var unist;
 const has = (v1, v2) => Object.keys(v1).every(k => {
     v1[k] === v2[k];
 });
-/*
-const contains =
-<T1, T2 extends keyof T1>(v1: T1, ...v2: Array<T2>): v1 is T1 & {
-    [k in T2]-?: Exclude<T1[k], undefined>
-} => v2.every(k => k in v1);
-*/
+const contains = (v1, ...v2) => v2.every(k => k in v1);
 exports.mermaid = (options = {}) => {
     var _a;
     const browser = (_a = options.browser, (_a !== null && _a !== void 0 ? _a : puppeteer.launch({
@@ -51,11 +46,9 @@ exports.mermaid = (options = {}) => {
 async function transformMermaidBlock(nd, others) {
     const meta = nd.meta.split(" ").map(v => v.split("="));
     const parsedMeta = meta.reduce((c, [k, v]) => ({ [k]: v, ...c }), {});
+    if (!contains(parsedMeta, 'file', 'name'))
+        return false;
     const { file: imageFilePath, name, alt } = parsedMeta;
-    if (!imageFilePath)
-        return false;
-    if (!name)
-        return false;
     const parsedMermaidBlock = {
         parsedMeta: {
             file: imageFilePath,
