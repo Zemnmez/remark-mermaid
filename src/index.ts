@@ -554,11 +554,11 @@ namespace unist {
 }
 
 const has =
-    <T1 extends Record<string, any>, T2 extends Record<string,any>>(v1: T1, v2: T2): v1 is (T1 & T2) => {
-        return Object.keys(v1).every(k => {
+    <T1 extends Record<string, any>, T2 extends Record<string,any>>(v1: T1, v2: T2): v1 is (T1 & T2) => 
+        Object.keys(v1).every(k => {
             v1[k]===v2[k]
         })
-    }
+ 
 
     /*
 const contains =

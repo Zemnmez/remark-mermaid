@@ -19,11 +19,9 @@ var unist;
 (function (unist) {
     ;
 })(unist || (unist = {}));
-const has = (v1, v2) => {
-    return Object.keys(v1).every(k => {
-        v1[k] === v2[k];
-    });
-};
+const has = (v1, v2) => Object.keys(v1).every(k => {
+    v1[k] === v2[k];
+});
 /*
 const contains =
 <T1, T2 extends keyof T1>(v1: T1, ...v2: Array<T2>): v1 is T1 & {
