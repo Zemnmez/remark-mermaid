@@ -12,9 +12,7 @@ var unist;
 (function (unist) {
     ;
 })(unist || (unist = {}));
-const has = (v1, v2) => Object.keys(v1).every(k => {
-    v1[k] === v2[k];
-});
+exports.has = (v1, v2) => Object.keys(v2).every(k => v1[k] === v2[k]);
 const contains = (v1, ...v2) => v2.every(k => k in v1);
 /*
 const assertNever =
@@ -45,7 +43,7 @@ const mustRoot = (nd) => {
     return nd;
 };
 ;
-exports.renderMermaidMarkdown = (options) => {
+exports.mermaidRender = (options) => {
     const transformer = exports.mermaidGuardless(options);
     console.log("fuck!");
     return async (node, file) => transformer(mustRoot(node), file);
@@ -123,18 +121,19 @@ async function transformParsedMermaidBlock(svgFile, mermaidNode, { ...others }) 
  */
 async function _transformer(ast, opts) {
     const a = ast;
-    console.log("fuck!!");
     if ("children" in a) {
         const mappings = await Promise.all(a.children.map(async (child) => await _transformer(child, opts)));
         // we either have [T] for no insertions or [T, T]
         // for an insertion, so we flatten.
         a.children = mappings.flat();
     }
-    if (!has(a, {
+    console.log(JSON.stringify(a));
+    if (!exports.has(a, {
         type: "code",
         lang: "mermaid"
     }))
         return ast;
+    console.log(`got code`, a);
     const ret = await transformMermaidBlock(a, {
         ...opts,
     });
@@ -143,5 +142,5 @@ async function _transformer(ast, opts) {
     return ret;
 }
 exports._transformer = _transformer;
-exports.default = exports.renderMermaidMarkdown;
-//# sourceMappingURL=index.js.map
+exports.default = exports.mermaidRender;
+//# sourceMappingURL=mermaidRender.js.map

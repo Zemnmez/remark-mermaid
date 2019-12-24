@@ -1,12 +1,16 @@
-import * as puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer';
 import { Config as renderMermaidConfig, renderMermaid }
     from 'mermaid-render';
 import { writeFile } from 'fs';
 import { promisify } from 'util';
 import path from 'path';
+import Unist from 'unist';
+import { VFile } from 'vfile';
+import unified from 'unified';
 
 
-export interface Options extends renderMermaidConfig {}
+export interface RemarkMermaidOptions extends renderMermaidConfig {}
+type Options = RemarkMermaidOptions
 
 type Eventually<T> = T | Promise<T>
 
@@ -16,15 +20,22 @@ type Eventually<T> = T | Promise<T>
  */
 namespace mdast {
     /** an Attacher attaches a Transformer to the processor. */
-    export interface Attacher<options extends any = unknown, nodeType extends Node = Node>
-        extends unist.Attacher<options, nodeType> {
+    export interface Attacher<
+        options extends any = unknown,
+        inType extends Node = Node,
+        outType extends Node = inType
+    >
+        extends unist.Attacher<options, inType, outType> {
 
-        (options?: options): Transformer<nodeType>
+        (options?: options): Transformer<inType, outType>
     }
 
     /** a Transformer transforms an mdast ast. */
-    export interface Transformer<nodeType extends Node = Node>
-        extends unist.Transformer<nodeType> {
+    export interface Transformer<
+        inType extends Node = Node,
+        outType extends Node = inType
+    >
+        extends unist.Transformer<inType, outType> {
     }
 
     /**
@@ -382,14 +393,11 @@ namespace mdast {
 
 namespace unist {
     /** node that contains a value */
-    export interface Literal<T = unknown> extends Node {
+    export interface Literal<T extends unknown = unknown> extends Unist.Literal {
         value: T
     }
 
-    /** Nodes containing other Nodes */
-    export interface Parent extends Node {
-        Children: Node[]
-    }
+    export type Parent = Unist.Parent
 
     /** a point in a remark ast */
     export interface Point {
@@ -408,73 +416,13 @@ namespace unist {
         indent: number
     }
 
-    /** a remark ast node */
+    export type Node = Unist.Node
+    /*
     export interface Node {
-        /** what type the node implements */
         type: string,
-        /** arbitrary data */
         data?: Data,
-        /** location of the node */
         position?: Position
-    }
-
-    /** a 'virtual file' */
-    export interface vFile {
-        /** path of vFile */
-        path?: string
-
-        /** Raw value */
-        contents: Buffer | string | null,
-
-        /** Base of `path` */
-        cwd: string
-
-        /**
-         * current name including extension
-         * cannot contain path separators
-         */
-        basename?: string,
-
-        /** Name (without extension) */
-        stem?: string,
-        /** Extension with dot */
-        extname?: string,
-        /** Path to parent directory */
-        dirname?: string,
-        /** list of file-paths the file has been moved between */
-        history?: string[],
-        /** for storage of custom information */
-        data?: any,
-
-        /**
-         * Convert the contents to string.
-         * @param encoding target string encoding (if `contents`
-         * is a buffer) -- defaults to "utf8"
-         */
-        toString(encoding: string): string
-
-        /**
-         * associates a 'message' with the file, where
-         * fatal is set to false
-         * @see https://github.com/vfile/vfile-message/tree/3596c73a06c5db6af031d0aab06a3fb29c7b1044#api
-         */
-        message: (
-            /**
-             * reason for the message
-             */
-            reason: ConstructorParameters<VMessage>[0],
-
-            /**
-             * place where it ocurred
-             */
-            position: ConstructorParameters<VMessage>[1],
-
-            /**
-             * place in code where message originates from
-             */
-            origin: ConstructorParameters<VMessage>[2]
-        ) => VMessage
-    }
+    }*/
 
     /**
      * @see https://github.com/vfile/vfile-message/tree/3596c73a06c5db6af031d0aab06a3fb29c7b1044#api
@@ -529,12 +477,17 @@ namespace unist {
     }
 
 
-    /**
-     * a confirgurable plugin.
-     */
-    export interface Attacher<options extends any = unknown, nodeType extends Node = Node> {
-        (options: options): Transformer<nodeType>
+    export interface Attacher<
+        /** options and settings */
+        options extends any = unknown,
+        /** the type of node the Transformer takes */
+        inType extends Node = Node,
+        /** the type of node the transformer produces */
+        outType extends Node = inType
+        > {
+        (options: options): Transformer<inType, outType>
     }
+
 
 
     /**
@@ -548,26 +501,67 @@ namespace unist {
      * if nothing is returned, no changes are made.
      * if an Error is returned, it is considered a fatal error.
      */
-    export interface Transformer<nodeType extends Node = Node> {
-        (node: nodeType, file: vFile): void | Eventually<Error | nodeType>
+    export interface Transformer<
+        inType extends Node = Node, outType extends Node = inType> {
+        (node: inType, file: VFile): void | Eventually<Error | outType>
     }
 }
 
-const has =
+export const has =
     <T1 extends Record<string, any>, T2 extends Record<string,any>>(v1: T1, v2: T2): v1 is (T1 & T2) => 
-        Object.keys(v1).every(k => {
-            v1[k]===v2[k]
-        })
+        Object.keys(v2).every(k => v1[k]===v2[k])
  
 
 const contains =
-    <T1, T2 extends keyof T1>(v1: T1, ...v2: Array<T2>): v1 is T1 & {
+    <T1, T2 extends keyof T1>(v1: T1, ...v2: Array<T2>): v1 is T1 & Readonly<{
         [k in T2]-?: Exclude<T1[k], undefined>
-    } => v2.every(k => k in v1);
+    }> => v2.every(k => k in v1);
 
-export const mermaid:
-    mdast.Attacher<Options> =
-(options: Options = {}) => {
+/*
+const assertNever =
+    (v: never, message: string) =>
+        new Error(message)
+
+export const mustMdastNode =
+    (nd: unist.Node): mdast.Node => {
+        const r = nd as mdast.Node;
+        switch (r.type) {
+        case "blockquote": case "break": case "code": case "definition": case "delete":
+        case "emphasis": case "footnote": case "footnoteDefinition":
+        case "footnoteReference": case "heading":
+        case "html": case "image": case "link": case "linkReference": case "root":
+        case "paragraph": case "thematicBreak":
+        case "list": case "listItem": case "table": case "tableRow":
+        case "tableCell": case "yaml": case "text": case "strong": case "inlineCode":
+        case "imageReference":
+        return r;
+        default:
+            throw assertNever(r, `${(r as any).type} seems not to be an mdast node (plugin order incorrect?)`)
+        }
+    }
+*/
+
+const mustRoot =
+    (nd: unist.Node): mdast.Root => {
+        if (nd.type !== "root") throw new Error(`${nd.type} is not root`);
+        return nd as mdast.Root
+    }
+
+interface mermaid extends unified.Plugin<[Partial<Options>?]> { };
+
+export const mermaidRender: mermaid = 
+    (options?: Options) => {
+        const transformer = mermaidGuardless(options);
+        console.log("fuck!");
+        return async (node: unist.Node, file: VFile):
+            Promise<unist.Node> =>
+            transformer(mustRoot(node), file)
+ 
+    }
+
+
+export const mermaidGuardless =
+(options: Options = {}): (ast: mdast.Root, file: VFile) => Promise<mdast.Node> => {
 
     const browser = options.browser ??
         puppeteer.launch({
@@ -576,27 +570,19 @@ export const mermaid:
         });
 
 
-    return async (ast: mdast.Node, file: unist.vFile) => {
-        const resp = await _transformer(ast, {...options, file, browser})
+    const ret =  async (ast: mdast.Root, file: VFile) => {
+            const resp = await _transformer(ast, {...options, file, browser});
+            if (resp instanceof Array) throw new Error("this should never happen");
+            return resp;
+        }
 
-        /**
-         * this check exists because the documentation for
-         * `transformer` specifies that it needs to take a Node,
-         * rather than a Root node. I doubt it actually happens, but
-         * rather than make my types not reflective of the spec
-         * I perform this check.
-         */
-        if (resp instanceof Array) return new Error(
-            "root node is not Root"
-        );
-
-        return resp;
-    }
+        return ret;
+ 
 }
 
 interface TransformerOptions extends Options {
     browser: Eventually<puppeteer.Browser>
-    file: unist.vFile
+    file: VFile
 }
 
 export interface TargetNode extends mdast.Code {
@@ -653,7 +639,7 @@ interface D<
 
 async function transformMermaidBlock<
     mermaidNode extends TargetNode
->(nd: mermaidNode, others: CreateRenderOptions) {
+>(nd: mermaidNode, others: TransformerOptions) {
     const meta = nd.meta.split(" ").map(v => v.split("=") as [string,string]);
     const parsedMeta = meta.reduce(
         (c, [k,v]) => ({[k]: v, ...c})
@@ -676,21 +662,14 @@ async function transformMermaidBlock<
     return transformParsedMermaidBlock(file, parsedMermaidBlock, others)
 }
 
-interface vFileWithDirname extends unist.vFile {
-    dirname: string
-}
-
-interface CreateRenderOptions extends TransformerOptions {
-    file: vFileWithDirname,
-}
 
 /** renders the mermaid block to a file, and
  * @returns the filepath
  */
-async function createRender(mermaid: ParsedMermaidBlock, opts: CreateRenderOptions): Promise<string> {
-    const { file: { dirname } } = opts
+async function createRender(mermaid: ParsedMermaidBlock, opts: TransformerOptions): Promise<string> {
+    const { file: { cwd } } = opts
     const { parsedMeta: { file: fileTarget }, value: mermaidCode } = mermaid;
-    const filepath = path.resolve(dirname, fileTarget);
+    const filepath = path.resolve(cwd, fileTarget);
     await promisify(writeFile)(
         filepath,
         await renderMermaid(mermaidCode, opts)
@@ -746,15 +725,9 @@ async function transformParsedMermaidBlock<
  */
 export async function _transformer
     <T extends mdast.Node | TargetNode>
-    (ast: T, opts: TransformerOptions) {
+    (ast: T, opts: TransformerOptions): Promise<mdast.Node | mdast.Node[]> {
 
     const a: mdast.Node | TargetNode = ast;
-
-    const dirname = opts.file.dirname;
-
-    if (!dirname) throw new Error(
-        `cannot resolve location of vFile ${opts.file.path}`
-    );
 
     if ("children" in a) {
         const mappings = await Promise.all((<mdast.Content[]> a.children).map(
@@ -769,20 +742,20 @@ export async function _transformer
             )();
     }
 
+    console.log(JSON.stringify(a));
+
     if (!has(a, <{type: "code", lang: "mermaid"}> {
         type: "code",
         lang: "mermaid"
     })) return ast;
+    console.log(`got code`, a);
 
     const ret = await transformMermaidBlock(a, {
         ...opts,
-        file: {
-            ...opts.file,
-            dirname
-        }
     });
+
     if (!ret) return ast;
     return ret;
 }
 
-export default mermaid;
+export default mermaidRender;
