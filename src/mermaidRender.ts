@@ -528,7 +528,6 @@ interface mermaid extends unified.Plugin<[Partial<Options>?]> { };
 export const mermaidRender: mermaid = 
     (options?: Options) => {
         const transformer = mermaidGuardless(options);
-        console.log("fuck!");
         return async (node: unist.Node, file: VFile):
             Promise<unist.Node> =>
             transformer(mustRoot(node), file)
@@ -537,7 +536,7 @@ export const mermaidRender: mermaid =
 
 
 export const mermaidGuardless =
-(options: Options = {}): (ast: mdast.Root, file: VFile) => Promise<mdast.Node> => {
+(options: Options = {}) => {
 
     const browser = options.browser ??
         puppeteer.launch({
@@ -546,14 +545,11 @@ export const mermaidGuardless =
         });
 
 
-    const ret =  async (ast: mdast.Root, file: VFile) => {
-            const resp = await _transformer(ast, {...options, file, browser});
-            if (resp instanceof Array) throw new Error("this should never happen");
-            return resp;
-        }
-
-        return ret;
- 
+    return async (ast: mdast.Root, file: VFile) => {
+        const resp = await _transformer(ast, {...options, file, browser});
+        if (resp instanceof Array) throw new Error("this should never happen");
+        return resp;
+    }
 }
 
 interface TransformerOptions extends Options {
@@ -664,7 +660,7 @@ async function transformParsedMermaidBlock<
     svgFile: file,
     mermaidNode: mermaidNode, opts: TransformerOptions): Promise<[
         /** image embed */
-        M<name, mdast.referenceType.full, alt>,
+        M<name, mdast.referenceType.shortcut, alt | name>,
         /** image definition */
         D<name,file, alt>
     ]> {
@@ -677,8 +673,8 @@ async function transformParsedMermaidBlock<
                 type: "imageReference",
                 identifier,
                 label: name,
-                referenceType: mdast.referenceType.full,
-                alt: alt
+                referenceType: mdast.referenceType.shortcut,
+                alt: alt ?? name
             },
             {
                 type: "definition",
@@ -701,7 +697,7 @@ async function transformParsedMermaidBlock<
  */
 export async function _transformer
     <T extends mdast.Node | TargetNode>
-    (ast: T, opts: TransformerOptions): Promise<mdast.Node | mdast.Node[]> {
+    (ast: T, opts: TransformerOptions) {
 
     const a: mdast.Node | TargetNode = ast;
 
@@ -718,13 +714,10 @@ export async function _transformer
             )();
     }
 
-    console.log(JSON.stringify(a));
-
     if (!has(a, <{type: "code", lang: "mermaid"}> {
         type: "code",
         lang: "mermaid"
     })) return ast;
-    console.log(`got code`, a);
 
     const ret = await transformMermaidBlock(a, {
         ...opts,

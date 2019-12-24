@@ -406,7 +406,7 @@ export declare const has: <T1 extends Record<string, any>, T2 extends Record<str
 interface mermaid extends unified.Plugin<[Partial<Options>?]> {
 }
 export declare const mermaidRender: mermaid;
-export declare const mermaidGuardless: (options?: RemarkMermaidOptions) => (ast: mdast.Root, file: VFile) => Promise<mdast.Node>;
+export declare const mermaidGuardless: (options?: RemarkMermaidOptions) => (ast: mdast.Root, file: VFile) => Promise<mdast.Root>;
 interface TransformerOptions extends Options {
     browser: Eventually<puppeteer.Browser>;
     file: VFile;
@@ -428,6 +428,16 @@ export declare type Metadata = {
      */
     alt?: string;
 };
+interface M<label extends string = string, referenceType extends mdast.referenceType = mdast.referenceType, alt extends string | undefined = string | undefined> extends mdast.ImageReference {
+    label: label;
+    referenceType: referenceType;
+    alt: alt;
+}
+interface D<label extends string = string, url extends string = string, title extends string | undefined = string> extends mdast.Definition {
+    label: label;
+    url: url;
+    title: title;
+}
 /**
  * _transformer takes an ast node and performs one of
  * two operations:
@@ -437,6 +447,6 @@ export declare type Metadata = {
  * @param ast ast node
  * @param opts config options
  */
-export declare function _transformer<T extends mdast.Node | TargetNode>(ast: T, opts: TransformerOptions): Promise<mdast.Node | mdast.Node[]>;
+export declare function _transformer<T extends mdast.Node | TargetNode>(ast: T, opts: TransformerOptions): Promise<[M<string, mdast.referenceType.shortcut, string | undefined>, D<string, string, string | undefined>] | T>;
 export default mermaidRender;
 //# sourceMappingURL=mermaidRender.d.ts.map
