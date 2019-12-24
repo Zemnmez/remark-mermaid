@@ -8,10 +8,6 @@ const mermaid_render_1 = require("mermaid-render");
 const fs_1 = require("fs");
 const util_1 = require("util");
 const path_1 = __importDefault(require("path"));
-var unist;
-(function (unist) {
-    ;
-})(unist || (unist = {}));
 exports.has = (v1, v2) => Object.keys(v2).every(k => v1[k] === v2[k]);
 const contains = (v1, ...v2) => v2.every(k => k in v1);
 const mustRoot = (nd) => {
@@ -73,7 +69,7 @@ async function transformParsedMermaidBlock(svgFile, mermaidNode, opts) {
             type: "imageReference",
             identifier,
             label: name,
-            referenceType: "shortcut" /* shortcut */,
+            referenceType: "shortcut",
             alt: (alt !== null && alt !== void 0 ? alt : name)
         },
         {
