@@ -12,6 +12,8 @@ graph TD;
 ```
 ~~~
 
+and turn them into this (!):
+
 ```mermaid file=example.svg name=Example_Diagram
 graph TD;
   A-->B;
@@ -20,11 +22,6 @@ graph TD;
   C-->D
 ```
 
-and turn them into this (!):
-
-![example.svg]
-
-[example.svg]: example.svg
 
 ## options
 all mermaid blocks that don't have `file` and `name` are skipped. It's also possible

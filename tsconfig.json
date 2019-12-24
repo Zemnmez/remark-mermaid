@@ -28,6 +28,7 @@
     "strictBindCallApply": true,           /* Enable strict 'bind', 'call', and 'apply' methods on functions. */
     "strictPropertyInitialization": true,  /* Enable strict checking of property initialization in classes. */
     "noImplicitThis": true,                /* Raise error on 'this' expressions with an implied 'any' type. */
+    "resolveJsonModule": true,
     "alwaysStrict": true,                  /* Parse in strict mode and emit "use strict" for each source file. */
 
     /* Additional Checks */

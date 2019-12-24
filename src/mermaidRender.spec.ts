@@ -1,10 +1,9 @@
-import unified from 'unified';
-import markdown from 'remark-parse';
 import stringifyMarkdown from 'remark-stringify';
 import { VFile } from 'vfile';
 import { mermaidRender, has } from './mermaidRender';
 import recommended from 'remark-preset-lint-recommended';
 import puppeteer from 'puppeteer';
+import remark from 'remark';
 
 const egfile = `
 Hello world!
@@ -37,8 +36,7 @@ describe.each([
             // for wsl
             args: ["--no-sandbox"]
         })
-        const processor = unified()
-            .use(markdown)
+        const processor = remark()
             .use(recommended)
             .use(mermaidRender, { browser })
             .use(stringifyMarkdown);
