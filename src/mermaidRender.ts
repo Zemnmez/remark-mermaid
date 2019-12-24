@@ -517,30 +517,6 @@ const contains =
         [k in T2]-?: Exclude<T1[k], undefined>
     }> => v2.every(k => k in v1);
 
-/*
-const assertNever =
-    (v: never, message: string) =>
-        new Error(message)
-
-export const mustMdastNode =
-    (nd: unist.Node): mdast.Node => {
-        const r = nd as mdast.Node;
-        switch (r.type) {
-        case "blockquote": case "break": case "code": case "definition": case "delete":
-        case "emphasis": case "footnote": case "footnoteDefinition":
-        case "footnoteReference": case "heading":
-        case "html": case "image": case "link": case "linkReference": case "root":
-        case "paragraph": case "thematicBreak":
-        case "list": case "listItem": case "table": case "tableRow":
-        case "tableCell": case "yaml": case "text": case "strong": case "inlineCode":
-        case "imageReference":
-        return r;
-        default:
-            throw assertNever(r, `${(r as any).type} seems not to be an mdast node (plugin order incorrect?)`)
-        }
-    }
-*/
-
 const mustRoot =
     (nd: unist.Node): mdast.Root => {
         if (nd.type !== "root") throw new Error(`${nd.type} is not root`);
@@ -657,9 +633,9 @@ async function transformMermaidBlock<
         ...nd
     };
 
-    const file = await createRender(parsedMermaidBlock, others);
+    await createRender(parsedMermaidBlock, others);
 
-    return transformParsedMermaidBlock(file, parsedMermaidBlock, others)
+    return transformParsedMermaidBlock(imageFilePath, parsedMermaidBlock, others)
 }
 
 
@@ -686,7 +662,7 @@ async function transformParsedMermaidBlock<
     mermaidNode extends ParsedMermaidBlock<string, name, alt>
     >(
     svgFile: file,
-    mermaidNode: mermaidNode, {...others}: TransformerOptions): Promise<[
+    mermaidNode: mermaidNode, opts: TransformerOptions): Promise<[
         /** image embed */
         M<name, mdast.referenceType.full, alt>,
         /** image definition */
