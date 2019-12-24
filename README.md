@@ -12,6 +12,14 @@ graph TD;
 ```
 ~~~
 
+```mermaid file=example.svg name=Example_Diagram
+graph TD;
+  A-->B;
+  A-->C;
+  B-->D;
+  C-->D
+```
+
 and turn them into this (!):
 
 ![example.svg]
